@@ -1,0 +1,6 @@
+Flask
+flask-socketio
+eventlet
+gunicorn
+requests
+werkzeug
