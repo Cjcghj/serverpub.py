@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ostedh Game</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+<div id="app">
+    <div id="register-screen" class="screen active">
+        <h1>🎨 Osteth Game</h1>
+        <div id="welcome-back" style="display:none;">
+            <p>Welcome back, <span id="saved-name"></span>!</p>
+            <p>Your ID: <span id="saved-id" class="pid"></span></p>
+            <button id="use-saved-btn">Continue</button>
+            <button id="new-name-btn" class="btn-sec">Change Name</button>
+        </div>
+        <div id="new-reg">
+            <input type="text" id="name-input" placeholder="Your name" maxlength="15">
+            <button id="register-btn">Start</button>
+        </div>
+        <p id="reg-err" class="err"></p>
+    </div>
+
+    <div id="lobby-screen" class="screen">
+        <div class="pinfo"><span id="dname"></span><span id="did" class="pid"></span></div>
+        <h2>📋 Lobby</h2>
+        <div id="lobby-cho">
+            <button id="create-btn" class="btn-cr">🎮 Create Game</button>
+            <p style="text-align:center;margin:10px 0;">- OR -</p>
+            <input type="text" id="join-code" placeholder="5-digit code" maxlength="5" style="text-transform:uppercase;">
+            <button id="join-btn" class="btn-jn">🚪 Join Game</button>
+        </div>
+        <div id="in-lobby" style="display:none;">
+            <h3>Code: <span id="lcode" class="rcode"></span></h3>
+            <p id="lrole"></p>
+            <div id="plist"><h4>Players:</h4><ul id="pul"></ul></div>
+            <div id="admin-ctl" style="display:none;"><button id="launch-btn">🚀 Launch</button></div>
+            <p id="lstat">Waiting...</p>
+            <button id="leave-btn" class="btn-sec">Leave</button>
+        </div>
+    </div>
+
+    <div id="ostedh-screen" class="screen">
+        <h2>🎨 You are Osteth!</h2>
+        <p>Pick secret picture:</p>
+        <div id="pgrid" class="pgrid">
+            <img id="p1" class="popt" data-c="1">
+            <img id="p2" class="popt" data-c="2">
+            <img id="p3" class="popt" data-c="3">
+        </div>
+        <p>Expected round:</p>
+        <input type="number" id="exp-r" min="1" max="30" value="10">
+        <button id="conf-ost">Confirm</button>
+        <div id="ostedh-picked" style="display:none;margin-top:15px;">
+            <p>✅ Selected:</p>
+            <img id="ostedh-img" src="" style="max-width:200px;border-radius:10px;">
+        </div>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <div class="ghdr">
+            <h2>🎮 Round: <span id="rnd">1</span></h2>
+            <span id="mscore">Score: 0</span>
+        </div>
+        <div id="turn-ind">Waiting...</div>
+        <div id="chat" class="chat"></div>
+        <div id="ctrls" class="ctrl" style="display:none;">
+            <p>✅ Your turn!</p>
+            <button id="ask-btn">❓ Ask</button>
+            <button id="guess-btn">🎯 Guess</button>
+        </div>
+        
+        <button id="osteth-view-pic-btn" class="btn-view-pic" style="display:none;">🖼️ View Secret Picture</button>
+        <button id="view-sb-btn" class="btn-view-sb">🏆 View Scores</button>
+        
+        <div id="q-modal" class="modal" style="display:none;">
+            <div class="mc">
+                <h3>Ask Question</h3>
+                <input type="text" id="q-in" placeholder="Question...">
+                <button id="send-q">Send</button>
+                <button id="cancel-q">Cancel</button>
+            </div>
+        </div>
+        <div id="g-modal" class="modal" style="display:none;">
+            <div class="mc">
+                <h3>Make Guess</h3>
+                <textarea id="g-in" placeholder="Describe picture..."></textarea>
+                <button id="send-g">Submit</button>
+                <button id="cancel-g">Cancel</button>
+            </div>
+        </div>
+        <div id="ost-ans-modal" class="modal" style="display:none;">
+            <div class="mc">
+                <h3><span id="ans-asker"></span> asks:</h3>
+                <p id="ans-q"></p>
+                <button id="ans-y" class="btn-y">✅ Yes</button>
+                <button id="ans-n" class="btn-n">❌ No</button>
+            </div>
+        </div>
+        <div id="ost-guess-modal" class="modal" style="display:none;">
+            <div class="mc">
+                <h3><span id="g-asker"></span> guesses:</h3>
+                <p id="g-txt"></p>
+                <button id="g-y" class="btn-y">✅ Correct!</button>
+                <button id="g-n" class="btn-n">❌ Wrong</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scoreboard-overlay" class="overlay" style="display:none;">
+        <div class="overlay-content">
+            <h1 id="overlay-title">🏆 Scoreboard</h1>
+            <div id="winner-banner" style="display:none;"></div>
+            <div id="overlay-sb" class="sb-container"></div>
+            <button id="close-sb-btn" class="btn-lobby">❌ Close</button>
+        </div>
+    </div>
+
+    <div id="osteth-picture-modal" class="modal" style="display:none;">
+        <div class="mc">
+            <h3>🖼️ Secret Picture</h3>
+            <img id="osteth-view-img" src="" alt="Secret Picture" style="max-width:100%; border-radius:12px; margin:15px 0;">
+            <button id="close-osteth-pic" class="btn-sec">Close</button>
+        </div>
+    </div>
+</div>
+<script src="/static/client.js"></script>
+</body>
+</html> 
