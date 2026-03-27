@@ -19,7 +19,7 @@ const log = (...args) => console.log('[GAME]', ...args);
 // ✅ YOUR WORKING FOOTBALL PLAYERS LIST (200+)
 const FOOTBALL_PLAYERS = [
     "lionel messi","cristiano ronaldo","kylian mbappe","erling haaland","neymar",
-    "kevin de bruyne","mohamed salah","vinicius jr","jude bellingham","harry kane",
+    "kevin de bruyne","mohamed salah","jude bellingham","harry kane",
     "robert lewandowski","karim benzema","luka modric","toni kroos","pedri",
     "gavi","antoine griezmann","paulo dybala","lautaro martinez",
     "sergio ramos","gerard pique","thiago silva","virgil van dijk","ruben dias",
