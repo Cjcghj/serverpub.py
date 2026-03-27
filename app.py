@@ -42,7 +42,7 @@ def _cleanup_worker():
 
 threading.Thread(target=_cleanup_worker, daemon=True).start()
 
-def schedule_file_removal(path, delay_seconds=20):
+def schedule_file_removal(path, delay_seconds=5):
     if not path:
         return
     remove_at = time.time() + max(1, int(delay_seconds))
@@ -100,6 +100,10 @@ class Group:
         self.osteth_timeout = None
         self._last_asker_key = None
         self._last_question = None
+        # ✅ THEME FIELDS:
+        self.selected_theme = None           # e.g., 'football'
+        self.secret_image_url = None         # Picture URL (set by Osteth)
+        self.secret_description = None       # "Team\nCountry • Age" (set by Osteth)
 
     def add_player(self, p, key=None):
         k = key or p.sid
@@ -135,6 +139,22 @@ class Group:
 
 GROUPS = {}
 
+@socketio.on('request_players')
+def on_request_players(d):
+    code = d.get('code')
+    if not code:
+        return
+    g = GROUPS.get(code)
+    if not g:
+        return
+    players = [
+        {'name': p.name, 'id': p.player_id, 'role': p.role}
+        for p in g.players.values()
+        if p.role != "admin" or p.sid == request.sid
+    ]
+    emit('players_list', {'players': players}, room=request.sid)
+    print(f"[PLAYERS] Sent {len(players)} players to {request.sid}")
+
 def broadcast(code, event, data, exclude_sid=None):
     g = GROUPS.get(code)
     if not g:
@@ -161,7 +181,8 @@ def get_scoreboard(g):
 def broadcast_scoreboard(g):
     try:
         sb, winner = get_scoreboard(g)
-        socketio.emit('scoreboard_sync', {'scoreboard': sb}, room=None)
+        for p in g.players.values():
+            socketio.emit('scoreboard_sync', {'scoreboard': sb}, room=p.sid)
         for p in g.players.values():
             try:
                 socketio.emit('score_update', {'id': p.player_id, 'name': p.name, 'score': p.score}, room=p.sid)
@@ -189,11 +210,12 @@ def notify_turn(g):
                 pass
     broadcast(g.code, 'round_update', {'round': g.current_tour})
 
+# ✅ FIXED: Send theme to Osteth
 def start_game(g):
     tel = [p for p in g.players.values() if p.role != "admin"]
-    if len(tel) < 2:
+    if len(tel) < 1:
         for p in g.players.values():
-            socketio.emit('error', {'message': 'Need 2+ players!'}, room=p.sid)
+            socketio.emit('error', {'message': 'Need at least 1 player to start!'}, room=p.sid)
         return
     g.ostedh_image_url = None
     g.ostedh_image_filename = None
@@ -204,13 +226,18 @@ def start_game(g):
     g.player_order = [k for k, p in g.players.items() if p.role != "admin"]
     for p in g.players.values():
         p.ostedh_status = "telmidh"
-    ost = random.choice(tel)
-    ost.ostedh_status = "ostedh"
-    socketio.emit('you_are_ostedh', {'code': g.code}, room=ost.sid)
-    for p in tel:
-        if p.sid != ost.sid:
-            socketio.emit('ostedh_is', {'name': ost.name}, room=p.sid)
-    print(f"[GAME] Started! Code: {g.code}")
+    ost = random.choice(tel) if tel else None
+    if ost:
+        ost.ostedh_status = "ostedh"
+        # ✅ Send theme so Osteth gets themed pictures
+        socketio.emit('you_are_ostedh', {
+            'code': g.code,
+            'theme': g.selected_theme
+        }, room=ost.sid)
+        for p in tel:
+            if p.sid != ost.sid:
+                socketio.emit('ostedh_is', {'name': ost.name}, room=p.sid)
+    print(f"[GAME] Started! Code: {g.code}, Theme: {g.selected_theme}")
 
 def _end_game_and_cleanup(g, reason="ended"):
     try:
@@ -223,22 +250,18 @@ def _end_game_and_cleanup(g, reason="ended"):
                 print(f"[GAME_OVER] {e}")
     except Exception as e:
         print(f"[END_GAME] {e}")
+    
+    g.game_started = False
+    g.right_answer = True
+    
     try:
         if g.ostedh_image_filename:
             fpath = os.path.join(UPLOAD_DIR, g.ostedh_image_filename)
-            schedule_file_removal(fpath, delay_seconds=20)
+            schedule_file_removal(fpath, delay_seconds=5)
     except Exception as e:
         print(f"[CLEANUP] {e}")
-    try:
-        if g.osteth_timeout:
-            try:
-                g.osteth_timeout.cancel()
-            except Exception:
-                pass
-        del GROUPS[g.code]
-        print(f"[CLEANUP] Removed group {g.code} ({reason})")
-    except Exception as e:
-        print(f"[CLEANUP] {e}")
+    
+    print(f"[CLEANUP] Group {g.code} scheduled for cleanup in 60 seconds")
 
 def _schedule_osteth_timeout(g, seconds=20):
     def _timeout():
@@ -297,7 +320,37 @@ def _schedule_player_timeout(g, player_key, seconds=5):
 def on_connect():
     print(f"[+] Connected: {request.sid}")
 
-@socketio.on('register')
+# ✅ CREATE ROOM WITH THEME
+@socketio.on('create_room_with_theme')
+def on_create_room_with_theme(data):
+    name = data.get('name')
+    pid = data.get('player_id')
+    role = data.get('role')
+    code = data.get('code')
+    theme = data.get('theme')
+    
+    if not all([name, pid, role, code, theme]):
+        emit('room_creation_error', {'message': 'Missing data'}, room=request.sid)
+        return
+    
+    GROUPS[code] = Group(code)
+    g = GROUPS[code]
+    
+    g.selected_theme = theme
+    
+    player = Player(request.sid, name, pid, role)
+    g.add_player(player, key=request.sid)
+    join_room(request.sid)
+    
+    print(f"[ROOM] Created {code} with theme: {theme}")
+    
+    emit('room_created_with_theme', {
+        'code': code,
+        'theme': theme,
+        'message': 'Room created successfully!'
+    }, room=request.sid)
+
+@socketio.on('register') 
 def on_register(d):
     name = d.get('name')
     pid = d.get('player_id')
@@ -362,6 +415,13 @@ def on_register(d):
             pass
 
         emit('registered', {'name': existing.name, 'player_id': existing.player_id, 'role': existing.role, 'code': g.code}, room=request.sid)
+        
+        if g.selected_theme:
+            emit('room_theme', {
+                'theme': g.selected_theme,
+                'secret_image': g.secret_image_url,
+                'secret_description': g.secret_description
+            }, room=request.sid)
 
         sb, winner = get_scoreboard(g)
         ost = g.get_ostedh()
@@ -373,8 +433,9 @@ def on_register(d):
             'ostedh_name': ost.name if ost else None,
             'ostedh_sid': ost.sid if ost else None,
             'scoreboard': sb,
-            'winner': winner,
-            'ostedh_image_url': g.ostedh_image_url if g.right_answer else None
+            'winner': winner if g.right_answer else None,
+            'ostedh_image_url': g.ostedh_image_url if g.right_answer else None,
+            'expected_tour': g.expected_tour
         }
         emit('reconnect_state', reconnect_state, room=request.sid)
         socketio.emit('scoreboard_sync', {'scoreboard': sb}, room=request.sid)
@@ -393,16 +454,53 @@ def on_register(d):
     join_room(request.sid)
     print(f"[PLAYER] {name} joined {code}")
 
-    if player.role != "admin":
+    if role != "admin":
         broadcast(code, 'player_joined', {'name': name, 'id': pid}, exclude_sid=request.sid)
-
+        print(f"[PLAYER] Broadcasted {name} joined to all others")
+        
+        players = [
+            {'name': p.name, 'id': p.player_id}
+            for k, p in g.players.items()
+            if k != request.sid and p.role != "admin"
+        ]
+        emit('players_list', {'players': players}, room=request.sid)
+        print(f"[PLAYERS] Sent {len(players)} existing players to {name}")
+    else:
+        players = [
+            {'name': p.name, 'id': p.player_id}
+            for k, p in g.players.items()
+            if k != request.sid and p.role != "admin"
+        ]
+        for player_data in players:
+            emit('player_joined', player_data, room=request.sid)
+            print(f"[PLAYERS] Sent player {player_data['name']} to admin")
+        print(f"[PLAYERS] Sent {len(players)} players to admin {name}")
+    
     cnt = len([p for p in g.players.values() if p.role != "admin"])
-    if cnt >= 2 and not g.game_started:
+    if cnt >= 1 and not g.game_started:
         admin = next((p for p in g.players.values() if p.role == "admin"), None)
         if admin:
             emit('ready_to_launch', {'code': code}, room=admin.sid)
 
     emit('registered', {'name': name, 'player_id': pid, 'role': role, 'code': code}, room=request.sid)
+    
+    if g.game_started:
+        sb, winner = get_scoreboard(g)
+        ost = g.get_ostedh()
+        reconnect_state = {
+            'game_started': g.game_started,
+            'current_tour': g.current_tour,
+            'player_order_names': [g.players[k].name for k in g.player_order if k in g.players],
+            'current_player_name': g.get_current().name if g.get_current() else None,
+            'ostedh_name': ost.name if ost else None,
+            'ostedh_sid': ost.sid if ost else None,
+            'scoreboard': sb,
+            'winner': winner if g.right_answer else None,
+            'ostedh_image_url': g.ostedh_image_url if g.right_answer else None,
+            'expected_tour': g.expected_tour
+        }
+        emit('reconnect_state', reconnect_state, room=request.sid)
+        print(f"[REGISTER] Sent game state to NEW player {name} (game_started={g.game_started})")
 
 @socketio.on('request_state')
 def on_request_state(d):
@@ -424,11 +522,14 @@ def on_request_state(d):
         'ostedh_name': ost.name if ost else None,
         'ostedh_sid': ost.sid if ost else None,
         'scoreboard': sb,
-        'winner': winner,
-        'ostedh_image_url': g.ostedh_image_url if g.right_answer else None
+        'winner': winner if g.right_answer else None,
+        'ostedh_image_url': g.ostedh_image_url if g.right_answer else None,
+        'expected_tour': g.expected_tour
     }
     emit('reconnect_state', reconnect_state, room=request.sid)
+    print(f"[RECONNECT] Sent state to {request.sid} for game {code}")
 
+# ✅ FIXED: CORS headers added
 @app.route('/api/upload-image', methods=['POST'])
 def upload_image():
     if request.content_type and request.content_type.startswith('application/json'):
@@ -438,7 +539,10 @@ def upload_image():
         if not external_url:
             return jsonify({'error': 'No external_url provided'}), 400
         try:
-            resp = requests.get(external_url, stream=True, timeout=10)
+            resp = requests.get(external_url, stream=True, timeout=10, headers={
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+            })
             if resp.status_code != 200:
                 return jsonify({'error': 'Failed to download external image'}), 400
             ext = 'jpg'
@@ -496,6 +600,7 @@ def on_launch(d):
                 print(f"[LAUNCH_NOTIFY] {e}")
         print(f"[LAUNCH] Game {g.code} launched! Notified {len(g.players)} players")
 
+# ✅ FIXED: Save picture description from Osteth
 @socketio.on('ostedh_ready')
 def on_ostedh_ready(d):
     g = GROUPS.get(d.get('code'))
@@ -507,9 +612,13 @@ def on_ostedh_ready(d):
         g.current_tour = 1
         g.current_turn_index = 0
         g.player_order = [k for k, p in g.players.items() if p.ostedh_status == "telmidh"]
+        
         chosen_url = d.get('image_url')
         if chosen_url:
             g.ostedh_image_url = chosen_url
+            g.secret_image_url = chosen_url
+            g.secret_description = d.get('picture_detail', '')
+        
         broadcast(g.code, 'game_start', {'message': 'Round 1 begins!'})
         notify_turn(g)
         broadcast_scoreboard(g)
@@ -682,16 +791,7 @@ def on_dec(d):
                 socketio.emit('game_over', payload, room=p.sid)
             except Exception:
                 pass
-        try:
-            if g.ostedh_image_filename:
-                fpath = os.path.join(UPLOAD_DIR, g.ostedh_image_filename)
-                schedule_file_removal(fpath, delay_seconds=20)
-        except Exception:
-            pass
-        try:
-            del GROUPS[g.code]
-        except Exception:
-            pass
+        print(f"[GAME_OVER] Group {g.code} will be cleaned up in 60 seconds")
     else:
         guesser = g.players.get(guesser_key)
         if guesser:
@@ -702,6 +802,7 @@ def on_dec(d):
     if guesser_key in g.pending_guesses:
         del g.pending_guesses[guesser_key]
 
+# ✅ FIXED: Send description and theme
 @socketio.on('osteth_view_picture')
 def on_osteth_view_picture(d):
     code = d.get('code')
@@ -713,8 +814,15 @@ def on_osteth_view_picture(d):
     if not ost or ost.sid != request.sid:
         emit('osteth_picture_error', {'error': 'Only Osteth can view picture'}, room=request.sid)
         return
+    
     if g.ostedh_image_url:
-        emit('osteth_picture', {'picture_url': g.ostedh_image_url}, room=request.sid)
+        emit('osteth_picture', {
+            'picture_url': g.ostedh_image_url,
+            'expected_round': g.expected_tour,
+            'description': g.secret_description,
+            'theme': g.selected_theme
+        }, room=request.sid)
+        print(f"[OSTETH] {ost.name} viewed picture (round: {g.expected_tour})")
     else:
         emit('osteth_picture_error', {'error': 'Picture not set yet'}, room=request.sid)
 
@@ -733,6 +841,8 @@ def on_disconnect():
             continue
         print(f"[DISCONNECT] {player.name} ({sid}) disconnected from {g.code}")
         player.disconnected = True
+        broadcast(g.code, 'player_left', {'name': player.name, 'id': player.player_id}, exclude_sid=sid)
+        
         ost = g.get_ostedh()
         if ost and ost.sid == sid and g.game_started and not g.right_answer:
             _schedule_osteth_timeout(g, seconds=20)
@@ -750,7 +860,7 @@ def on_disconnect():
             else:
                 _schedule_player_timeout(g, player_key, seconds=5)
         cnt = len([p for p in g.players.values() if p.role != "admin" and not p.disconnected])
-        if g.game_started and cnt < 2:
+        if g.game_started and cnt < 1:
             _end_game_and_cleanup(g, reason="not_enough_players")
         break
     leave_room(sid)
