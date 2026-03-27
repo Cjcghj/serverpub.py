@@ -24,6 +24,74 @@
         <p id="reg-err" class="err"></p>
     </div>
 
+    <!-- ✅ Theme Selection Screen -->
+    <div id="theme-screen" class="screen">
+        <h1>🎨 Choose Picture Theme</h1>
+        <p class="subtitle">Select the type of pictures you want to play with</p>
+        
+        <div class="theme-grid">
+            <div class="theme-card" onclick="selectTheme('football')">
+                <div class="theme-icon">⚽</div>
+                <h3>Football</h3>
+                <p>Real players with league info</p>
+                <div class="theme-preview">
+                    <img src="https://images.unsplash.com/photo-1517466787929-bc90951d0974?w=80&h=80&fit=crop" alt="Football">
+                    <img src="https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=80&h=80&fit=crop" alt="Football">
+                    <img src="https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=80&h=80&fit=crop" alt="Football">
+                </div>
+            </div>
+
+            <div class="theme-card" onclick="selectTheme('anime')">
+                <div class="theme-icon">🎌</div>
+                <h3>Anime</h3>
+                <p>Popular anime series</p>
+                <div class="theme-preview">
+                    <img src="https://cdn.myanimelist.net/images/anime/6/73245.jpg" alt="Anime">
+                    <img src="https://cdn.myanimelist.net/images/anime/12/76049.jpg" alt="Anime">
+                    <img src="https://cdn.myanimelist.net/images/anime/13/17405.jpg" alt="Anime">
+                </div>
+            </div>
+
+            <div class="theme-card" onclick="selectTheme('animals')">
+                <div class="theme-icon">🦁</div>
+                <h3>Animals</h3>
+                <p>Real animals (wild & cute)</p>
+                <div class="theme-preview">
+                    <img src="https://images.unsplash.com/photo-1614027164847-1b28cfe1df60?w=80&h=80&fit=crop" alt="Lion">
+                    <img src="https://images.unsplash.com/photo-1501706362039-c06b2d715385?w=80&h=80&fit=crop" alt="Tiger">
+                    <img src="https://images.unsplash.com/photo-1557008075-7f2c5efa4cfd?w=80&h=80&fit=crop" alt="Elephant">
+                </div>
+            </div>
+
+            <div class="theme-card" onclick="selectTheme('food')">
+                <div class="theme-icon">🍕</div>
+                <h3>Food</h3>
+                <p>Delicious real dishes</p>
+                <div class="theme-preview">
+                    <img src="https://images.unsplash.com/photo-1513104890138-7c749659a591?w=80&h=80&fit=crop" alt="Pizza">
+                    <img src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=80&h=80&fit=crop" alt="Burger">
+                    <img src="https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=80&h=80&fit=crop" alt="Sushi">
+                </div>
+            </div>
+
+            <div class="theme-card" onclick="selectTheme('random')">
+                <div class="theme-icon">🎲</div>
+                <h3>Random Mix</h3>
+                <p>Everything together</p>
+                <div class="theme-preview">
+                    <img src="https://picsum.photos/seed/random1/80/80" alt="Random">
+                    <img src="https://picsum.photos/seed/random2/80/80" alt="Random">
+                    <img src="https://picsum.photos/seed/random3/80/80" alt="Random">
+                </div>
+            </div>
+        </div>
+
+        <div id="selected-theme-info" style="display:none; margin-top:20px;">
+            <p style="color:#ffd700; font-size:18px;">✅ Selected: <span id="theme-name-display"></span></p>
+            <button id="create-room-btn" class="btn-confirm">Create Room</button>
+        </div>
+    </div>
+
     <div id="lobby-screen" class="screen">
         <div class="pinfo"><span id="dname"></span><span id="did" class="pid"></span></div>
         <h2>📋 Lobby</h2>
@@ -36,6 +104,7 @@
         <div id="in-lobby" style="display:none;">
             <h3>Code: <span id="lcode" class="rcode"></span></h3>
             <p id="lrole"></p>
+            <div id="room-theme-display" style="display:none; margin-top:10px; padding:10px; background:rgba(255,215,0,0.2); border-radius:8px; text-align:center;"></div>
             <div id="plist"><h4>Players:</h4><ul id="pul"></ul></div>
             <div id="admin-ctl" style="display:none;"><button id="launch-btn">🚀 Launch</button></div>
             <p id="lstat">Waiting...</p>
@@ -79,7 +148,7 @@
         <div id="q-modal" class="modal" style="display:none;">
             <div class="mc">
                 <h3>Ask Question</h3>
-                <input type="text" id="q-in" placeholder="Question...">
+                <input type="text" id="q-in" placeholder="Question..." required>
                 <button id="send-q">Send</button>
                 <button id="cancel-q">Cancel</button>
             </div>
@@ -87,7 +156,7 @@
         <div id="g-modal" class="modal" style="display:none;">
             <div class="mc">
                 <h3>Make Guess</h3>
-                <textarea id="g-in" placeholder="Describe picture..."></textarea>
+                <textarea id="g-in" placeholder="Describe picture..." required></textarea>
                 <button id="send-g">Submit</button>
                 <button id="cancel-g">Cancel</button>
             </div>
@@ -123,10 +192,11 @@
         <div class="mc">
             <h3>🖼️ Secret Picture</h3>
             <img id="osteth-view-img" src="" alt="Secret Picture" style="max-width:100%; border-radius:12px; margin:15px 0;">
+            <div id="osteth-picture-details" style="margin-top:15px;"></div>
             <button id="close-osteth-pic" class="btn-sec">Close</button>
         </div>
     </div>
 </div>
 <script src="/static/client.js"></script>
 </body>
-</html> 
+</html>
