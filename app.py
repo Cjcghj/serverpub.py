@@ -12,7 +12,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 UPLOAD_DIR = os.path.join(app.static_folder, 'uploads')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-_CLEANUP_QUEUE = [] 
+_CLEANUP_QUEUE = []
 _CLEANUP_LOCK = threading.Lock()
 
 def _cleanup_worker():
@@ -24,18 +24,18 @@ def _cleanup_worker():
                 for item in list(_CLEANUP_QUEUE):
                     if item.get('remove_at', 0) <= now:
                         to_remove.append(item)
-                for item in to_remove:
-                    path = item.get('path')
-                    try:
-                        if path and os.path.exists(path):
-                            os.remove(path)
-                            print(f"[CLEANUP] Removed {path}")
-                    except Exception as e:
-                        print(f"[CLEANUP] Remove error for {path}: {e}")
-                    try:
-                        _CLEANUP_QUEUE.remove(item)
-                    except ValueError:
-                        pass
+            for item in to_remove:
+                path = item.get('path')
+                try:
+                    if path and os.path.exists(path):
+                        os.remove(path)
+                        print(f"[CLEANUP] Removed {path}")
+                except Exception as e:
+                    print(f"[CLEANUP] Remove error for {path}: {e}")
+                try:
+                    _CLEANUP_QUEUE.remove(item)
+                except ValueError:
+                    pass
         except Exception as e:
             print(f"[CLEANUP] Worker error: {e}")
         time.sleep(1)
@@ -55,8 +55,8 @@ def schedule_file_removal(path, delay_seconds=5):
         _CLEANUP_QUEUE.append({'path': path, 'remove_at': remove_at})
     print(f"[CLEANUP] Scheduled removal of {path} in {delay_seconds}s")
 
-
 _RECENT_ACTIONS = {}
+
 def _recent_action_allowed(player_id, window_ms=300):
     if not player_id:
         return True
@@ -77,6 +77,7 @@ class Player:
         self.ostedh_status = "telmidh"
         self.disconnected = False
         self.disconnect_timer = None
+    
     def add_point(self, p):
         self.score += p
         return self.score
@@ -88,6 +89,7 @@ class Group:
         self.player_order = []
         self.current_turn_index = 0
         self.game_started = False
+        self.game_launched = False  
         self.current_tour = 1
         self.expected_tour = None
         self.right_answer = False
@@ -100,29 +102,28 @@ class Group:
         self.osteth_timeout = None
         self._last_asker_key = None
         self._last_question = None
-        # ✅ THEME FIELDS:
-        self.selected_theme = None           # e.g., 'football'
-        self.secret_image_url = None         # Picture URL (set by Osteth)
-        self.secret_description = None       # "Team\nCountry • Age" (set by Osteth)
-
+        self.selected_theme = None
+        self.secret_image_url = None
+        self.secret_description = None
+    
     def add_player(self, p, key=None):
         k = key or p.sid
         self.players[k] = p
         if p.role != "admin" and k not in self.player_order:
             self.player_order.append(k)
-
+    
     def get_ostedh(self):
         for p in self.players.values():
             if p.ostedh_status == "ostedh":
                 return p
         return None
-
+    
     def get_telmidhs(self):
         return [p for p in self.players.values() if p.ostedh_status == "telmidh" and p.role != "admin"]
-
+    
     def get_all_for_scoreboard(self):
         return [p for p in self.players.values()]
-
+    
     def get_current(self):
         if not self.player_order:
             return None
@@ -130,7 +131,7 @@ class Group:
             self.current_turn_index = 0
         key = self.player_order[self.current_turn_index]
         return self.players.get(key)
-
+    
     def next_turn(self):
         if self.player_order:
             self.current_turn_index = (self.current_turn_index + 1) % len(self.player_order)
@@ -210,13 +211,13 @@ def notify_turn(g):
                 pass
     broadcast(g.code, 'round_update', {'round': g.current_tour})
 
-# ✅ FIXED: Send theme to Osteth
 def start_game(g):
     tel = [p for p in g.players.values() if p.role != "admin"]
     if len(tel) < 1:
         for p in g.players.values():
             socketio.emit('error', {'message': 'Need at least 1 player to start!'}, room=p.sid)
         return
+    
     g.ostedh_image_url = None
     g.ostedh_image_filename = None
     g.right_answer = False
@@ -224,12 +225,13 @@ def start_game(g):
     g.current_tour = 1
     g.current_turn_index = 0
     g.player_order = [k for k, p in g.players.items() if p.role != "admin"]
+    
     for p in g.players.values():
         p.ostedh_status = "telmidh"
+    
     ost = random.choice(tel) if tel else None
     if ost:
         ost.ostedh_status = "ostedh"
-        # ✅ Send theme so Osteth gets themed pictures
         socketio.emit('you_are_ostedh', {
             'code': g.code,
             'theme': g.selected_theme
@@ -237,12 +239,19 @@ def start_game(g):
         for p in tel:
             if p.sid != ost.sid:
                 socketio.emit('ostedh_is', {'name': ost.name}, room=p.sid)
+    
     print(f"[GAME] Started! Code: {g.code}, Theme: {g.selected_theme}")
 
 def _end_game_and_cleanup(g, reason="ended"):
     try:
         sb, winner = get_scoreboard(g)
-        payload = {'scoreboard': sb, 'winner': winner, 'code': g.code, 'ostedh_image_url': g.ostedh_image_url if g.ostedh_image_url else None, 'reason': reason}
+        payload = {
+            'scoreboard': sb,
+            'winner': winner,
+            'code': g.code,
+            'ostedh_image_url': g.ostedh_image_url if g.ostedh_image_url else None,
+            'reason': reason
+        }
         for p in list(g.players.values()):
             try:
                 socketio.emit('game_over', payload, room=p.sid)
@@ -274,14 +283,16 @@ def _schedule_osteth_timeout(g, seconds=20):
             _end_game_and_cleanup(gg, reason="osteth_timeout")
         else:
             print(f"[TIMEOUT] Osteth present for {g.code}; no action.")
+    
     try:
-        if g.osteth_timeout:    
+        if g.osteth_timeout:
             try:
                 g.osteth_timeout.cancel()
             except Exception:
                 pass
     except Exception:
         pass
+    
     t = threading.Timer(seconds, _timeout)
     t.daemon = True
     g.osteth_timeout = t
@@ -303,12 +314,14 @@ def _schedule_player_timeout(g, player_key, seconds=5):
             notify_turn(gg)
         if p:
             p.disconnect_timer = None
+    
     p = g.players.get(player_key)
     if p and getattr(p, 'disconnect_timer', None):
         try:
             p.disconnect_timer.cancel()
         except Exception:
             pass
+    
     t = threading.Timer(seconds, _timeout)
     t.daemon = True
     if p:
@@ -320,7 +333,6 @@ def _schedule_player_timeout(g, player_key, seconds=5):
 def on_connect():
     print(f"[+] Connected: {request.sid}")
 
-# ✅ CREATE ROOM WITH THEME
 @socketio.on('create_room_with_theme')
 def on_create_room_with_theme(data):
     name = data.get('name')
@@ -335,7 +347,6 @@ def on_create_room_with_theme(data):
     
     GROUPS[code] = Group(code)
     g = GROUPS[code]
-    
     g.selected_theme = theme
     
     player = Player(request.sid, name, pid, role)
@@ -350,71 +361,83 @@ def on_create_room_with_theme(data):
         'message': 'Room created successfully!'
     }, room=request.sid)
 
-@socketio.on('register') 
+@socketio.on('register')
 def on_register(d):
     name = d.get('name')
     pid = d.get('player_id')
     role = d.get('role')
     code = d.get('code')
-
+    
     if not name or len(name) < 2:
         emit('register_error', {'message': 'Name too short'}, room=request.sid)
         return
+    
     if not pid or len(pid) < 4:
         emit('register_error', {'message': 'Invalid ID'}, room=request.sid)
         return
+    
     if code not in GROUPS:
         if role != "admin":
             emit('register_error', {'message': 'Group not found'}, room=request.sid)
             return
         GROUPS[code] = Group(code)
         print(f"[GROUP] Created: {code}")
-
+    
     g = GROUPS[code]
-
     existing_key = None
     existing = None
+    
     for k, p in list(g.players.items()):
         if p.player_id == pid:
             existing_key = k
             existing = p
             break
-
+    
     if existing:
         old_key = existing_key
         existing.sid = request.sid
         existing.name = name
         existing.role = role
         existing.disconnected = False
+        
         join_room(request.sid)
+        
         if old_key != request.sid:
             try:
                 del g.players[old_key]
             except Exception:
                 pass
             g.players[request.sid] = existing
+            
             for i, k in enumerate(g.player_order):
                 if k == old_key:
                     g.player_order[i] = request.sid
-        if getattr(existing, 'disconnect_timer', None):
-            try:
-                existing.disconnect_timer.cancel()
-                existing.disconnect_timer = None
-            except Exception:
-                pass
-        try:
-            ost = g.get_ostedh()
-            if ost and ost.player_id == pid and g.osteth_timeout:
+            
+            if getattr(existing, 'disconnect_timer', None):
                 try:
-                    g.osteth_timeout.cancel()
+                    existing.disconnect_timer.cancel()
+                    existing.disconnect_timer = None
                 except Exception:
                     pass
-                g.osteth_timeout = None
-                print(f"[TIMER] Cancelled osteth timeout for {g.code}")
-        except Exception:
-            pass
-
-        emit('registered', {'name': existing.name, 'player_id': existing.player_id, 'role': existing.role, 'code': g.code}, room=request.sid)
+            
+            try:
+                ost = g.get_ostedh()
+                if ost and ost.player_id == pid and g.osteth_timeout:
+                    try:
+                        g.osteth_timeout.cancel()
+                    except Exception:
+                        pass
+                    g.osteth_timeout = None
+                    print(f"[TIMER] Cancelled osteth timeout for {g.code}")
+            except Exception:
+                pass
+        
+        emit('registered', {
+            'name': existing.name,
+            'player_id': existing.player_id,
+            'role': existing.role,
+            'code': g.code
+        }, room=request.sid)
         
         if g.selected_theme:
             emit('room_theme', {
@@ -422,9 +445,10 @@ def on_register(d):
                 'secret_image': g.secret_image_url,
                 'secret_description': g.secret_description
             }, room=request.sid)
-
+        
         sb, winner = get_scoreboard(g)
         ost = g.get_ostedh()
+        
         reconnect_state = {
             'game_started': g.game_started,
             'current_tour': g.current_tour,
@@ -439,50 +463,47 @@ def on_register(d):
         }
         emit('reconnect_state', reconnect_state, room=request.sid)
         socketio.emit('scoreboard_sync', {'scoreboard': sb}, room=request.sid)
+        
         for p in g.players.values():
             try:
                 socketio.emit('score_update', {'id': p.player_id, 'name': p.name, 'score': p.score}, room=p.sid)
             except Exception:
                 pass
-
+        
         broadcast(g.code, 'player_reconnected', {'name': existing.name, 'id': existing.player_id}, exclude_sid=request.sid)
         print(f"[RECONNECT] {existing.name} rejoined {g.code}")
         return
-
+    
     player = Player(request.sid, name, pid, role)
     g.add_player(player, key=request.sid)
     join_room(request.sid)
+    
     print(f"[PLAYER] {name} joined {code}")
-
+    
     if role != "admin":
         broadcast(code, 'player_joined', {'name': name, 'id': pid}, exclude_sid=request.sid)
         print(f"[PLAYER] Broadcasted {name} joined to all others")
-        
-        players = [
-            {'name': p.name, 'id': p.player_id}
-            for k, p in g.players.items()
-            if k != request.sid and p.role != "admin"
-        ]
-        emit('players_list', {'players': players}, room=request.sid)
-        print(f"[PLAYERS] Sent {len(players)} existing players to {name}")
-    else:
-        players = [
-            {'name': p.name, 'id': p.player_id}
-            for k, p in g.players.items()
-            if k != request.sid and p.role != "admin"
-        ]
-        for player_data in players:
-            emit('player_joined', player_data, room=request.sid)
-            print(f"[PLAYERS] Sent player {player_data['name']} to admin")
-        print(f"[PLAYERS] Sent {len(players)} players to admin {name}")
+    
+    players = [
+        {'name': p.name, 'id': p.player_id}
+        for k, p in g.players.items()
+        if k != request.sid and p.role != "admin"
+    ]
+    emit('players_list', {'players': players}, room=request.sid)
+    print(f"[PLAYERS] Sent {len(players)} existing players to {name}")
     
     cnt = len([p for p in g.players.values() if p.role != "admin"])
     if cnt >= 1 and not g.game_started:
         admin = next((p for p in g.players.values() if p.role == "admin"), None)
         if admin:
             emit('ready_to_launch', {'code': code}, room=admin.sid)
-
-    emit('registered', {'name': name, 'player_id': pid, 'role': role, 'code': code}, room=request.sid)
+    
+    emit('registered', {
+        'name': name,
+        'player_id': pid,
+        'role': role,
+        'code': code
+    }, room=request.sid)
     
     if g.game_started:
         sb, winner = get_scoreboard(g)
@@ -508,12 +529,15 @@ def on_request_state(d):
     if not code:
         emit('request_state_error', {'error': 'No code provided'}, room=request.sid)
         return
+    
     g = GROUPS.get(code)
     if not g:
         emit('request_state_error', {'error': 'Group not found'}, room=request.sid)
         return
+    
     sb, winner = get_scoreboard(g)
     ost = g.get_ostedh()
+    
     reconnect_state = {
         'game_started': g.game_started,
         'current_tour': g.current_tour,
@@ -529,15 +553,16 @@ def on_request_state(d):
     emit('reconnect_state', reconnect_state, room=request.sid)
     print(f"[RECONNECT] Sent state to {request.sid} for game {code}")
 
-# ✅ FIXED: CORS headers added
 @app.route('/api/upload-image', methods=['POST'])
 def upload_image():
     if request.content_type and request.content_type.startswith('application/json'):
         data = request.get_json() or {}
         external_url = data.get('external_url')
         code = data.get('code')
+        
         if not external_url:
             return jsonify({'error': 'No external_url provided'}), 400
+        
         try:
             resp = requests.get(external_url, stream=True, timeout=10, headers={
                 'User-Agent': 'Mozilla/5.0',
@@ -545,69 +570,114 @@ def upload_image():
             })
             if resp.status_code != 200:
                 return jsonify({'error': 'Failed to download external image'}), 400
+            
             ext = 'jpg'
             ctype = resp.headers.get('content-type', '')
             if 'png' in ctype:
                 ext = 'png'
+            
             fname = f"{(code or 'g')}_{uuid.uuid4().hex[:10]}.{ext}"
             fpath = os.path.join(UPLOAD_DIR, fname)
+            
             with open(fpath, 'wb') as f:
                 for chunk in resp.iter_content(1024):
                     if chunk:
                         f.write(chunk)
+            
             public_url = f"/static/uploads/{fname}"
+            
             if code:
                 g = GROUPS.get(code)
                 if g:
                     g.ostedh_image_url = public_url
                     g.ostedh_image_filename = fname
+            
             return jsonify({'url': public_url}), 200
         except Exception as e:
             print(f"[UPLOAD] {e}")
             return jsonify({'error': 'External download failed'}), 500
-
+    
     file = request.files.get('image')
     code = request.form.get('code')
+    
     if not file:
         return jsonify({'error': 'No image file provided'}), 400
+    
     filename = secure_filename(file.filename) or 'img.jpg'
     ext = filename.rsplit('.', 1)[-1] if '.' in filename else 'jpg'
     fname = f"{(code or 'g')}_{uuid.uuid4().hex[:10]}.{ext}"
     fpath = os.path.join(UPLOAD_DIR, fname)
+    
     try:
         file.save(fpath)
     except Exception as e:
         print(f"[UPLOAD] {e}")
         return jsonify({'error': 'Failed to save'}), 500
+    
     public_url = f"/static/uploads/{fname}"
+    
     if code:
         g = GROUPS.get(code)
         if g:
             g.ostedh_image_url = public_url
             g.ostedh_image_filename = fname
             print(f"[UPLOAD] Saved for {code}: {public_url}")
+    
     return jsonify({'url': public_url}), 200
+
 
 @socketio.on('launch_game')
 def on_launch(d):
     g = GROUPS.get(d.get('code'))
-    if g:
-        start_game(g)
-        for p in g.players.values():
-            try:
-                socketio.emit('game_launched', {'message': 'Game started!'}, room=p.sid)
-            except Exception as e:
-                print(f"[LAUNCH_NOTIFY] {e}")
-        print(f"[LAUNCH] Game {g.code} launched! Notified {len(g.players)} players")
+    if not g:
+        emit('launch_error', {'message': 'Game not found!'}, room=request.sid)
+        return
+    
 
-# ✅ FIXED: Save picture description from Osteth
+    if g.game_launched:
+        emit('launch_error', {'message': 'Game already launched!'}, room=request.sid)
+        print(f"[LAUNCH] Game {g.code} already launched!")
+        return
+    
+
+    player_count = len([p for p in g.players.values() if p.role != "admin"])
+    if player_count < 1:
+        emit('launch_error', {
+            'message': 'Need at least 1 player to start! (Admin + 1 Player minimum)'
+        }, room=request.sid)
+        print(f"[LAUNCH] Not enough players in {g.code}: {player_count} players")
+        return
+    
+    g.game_launched = True  
+    start_game(g)
+    
+
+    for p in g.players.values():
+        try:
+            socketio.emit('game_launched', {
+                'message': 'Game started!',
+                'launched_by': request.sid
+            }, room=p.sid)
+        except Exception as e:
+            print(f"[LAUNCH_NOTIFY] {e}")
+    
+    print(f"[LAUNCH] Game {g.code} launched! Notified {len(g.players)} players")
+
 @socketio.on('ostedh_ready')
 def on_ostedh_ready(d):
     g = GROUPS.get(d.get('code'))
     if not g:
         return
+    
     try:
-        g.expected_tour = int(d.get('expected_tour') or g.expected_tour or 1)
+
+        expected_tour = int(d.get('expected_tour') or g.expected_tour or 1)
+        if expected_tour > 30:
+            expected_tour = 30
+        if expected_tour < 1:
+            expected_tour = 1
+        
+        g.expected_tour = expected_tour
         g.game_started = True
         g.current_tour = 1
         g.current_turn_index = 0
@@ -630,50 +700,57 @@ def on_ask(d):
     code = d.get('code')
     question = (d.get('question') or '').strip()
     pid = d.get('player_id')
+    
     if not code or not question:
         return
+    
     g = GROUPS.get(code)
     if not g:
         return
-
+    
     if g.waiting_for_ostedh_answer:
         try:
             socketio.emit('system', {'message': 'A question is already pending.'}, room=request.sid)
         except Exception:
             pass
         return
-
+    
     asker_key = None
     asker = None
+    
     if pid:
         for k, p in g.players.items():
             if p.player_id == pid:
                 asker_key = k
                 asker = p
                 break
+    
     if not asker:
         for k, p in g.players.items():
             if p.sid == request.sid:
                 asker_key = k
                 asker = p
                 break
+    
     if not asker:
         return
-
+    
     if not _recent_action_allowed(asker.player_id):
         return
-
+    
     try:
         asker.add_point(10)
     except Exception:
         pass
+    
     broadcast_scoreboard(g)
-
     g.waiting_for_ostedh_answer = True
     g._last_asker_key = asker_key
     g._last_question = question
+    
 
     broadcast(g.code, 'question_asked', {'asker': asker.name, 'question': question})
+    
     ost = g.get_ostedh()
     if ost:
         try:
@@ -686,16 +763,23 @@ def on_ans(d):
     code = d.get('code')
     if not code:
         return
+    
     g = GROUPS.get(code)
     if not g or not g.waiting_for_ostedh_answer:
         return
+    
     g.waiting_for_ostedh_answer = False
     ans = (d.get('answer') or '').strip().lower()
-    broadcast(g.code, 'answer_given', {'answer': ans.upper(), 'question': getattr(g, '_last_question', '')})
 
+    broadcast(g.code, 'answer_given', {
+        'answer': ans.upper(),
+        'question': getattr(g, '_last_question', ''),
+        'asker': getattr(g, '_last_asker_key', None)
+    })
+    
     asker_key = getattr(g, '_last_asker_key', None)
     asker = g.players.get(asker_key) if asker_key else None
-
+    
     if asker:
         if ans == "yes":
             pass
@@ -705,10 +789,10 @@ def on_ans(d):
             except Exception:
                 pass
         broadcast_scoreboard(g)
-
+    
     g._last_asker_key = None
     g._last_question = None
-
+    
     try:
         g.next_turn()
         notify_turn(g)
@@ -720,35 +804,58 @@ def on_guess(d):
     g = GROUPS.get(d.get('code'))
     if not g or g.waiting_for_ostedh_decision:
         return
+    
     pid = d.get('player_id')
     cur = g.get_current()
+    
     if not cur:
         return
+    
     if not (cur.sid == request.sid or (pid and cur.player_id == pid)):
         return
+    
     if not _recent_action_allowed(pid or cur.player_id):
         return
+    
     ost = g.get_ostedh()
     if not ost:
         return
+    
     g.waiting_for_ostedh_decision = True
+    
     cur_key = None
     for k, p in g.players.items():
         if p.sid == cur.sid:
             cur_key = k
             break
+    
     if cur_key:
-        g.pending_guesses[cur_key] = {'name': cur.name, 'guess': d.get('guess')}
-    emit('guess_for_you', {'guesser': cur.name, 'guess': d.get('guess'), 'guesser_key': cur_key, 'guesser_sid': cur.sid}, room=ost.sid)
+        guess = d.get('guess', '')
+        g.pending_guesses[cur_key] = {'name': cur.name, 'guess': guess}
+
+        broadcast(g.code, 'guess_submitted', {
+            'guesser': cur.name,
+            'guess': guess,
+            'round': g.current_tour
+        })
+        
+        emit('guess_for_you', {
+            'guesser': cur.name,
+            'guess': guess,
+            'guesser_key': cur_key,
+            'guesser_sid': cur.sid
+        }, room=ost.sid)
 
 @socketio.on('guess_decision')
 def on_dec(d):
     g = GROUPS.get(d.get('code'))
     if not g or not g.waiting_for_ostedh_decision:
         return
+    
     guesser_key = d.get('guesser_key') or d.get('guesser_sid') or d.get('guesser_id')
     if not guesser_key:
         return
+    
     gd = g.pending_guesses.get(guesser_key)
     if not gd:
         name = d.get('guesser_name')
@@ -758,13 +865,23 @@ def on_dec(d):
                     guesser_key = k
                     gd = v
                     break
-    if not gd:
-        return
+        if not gd:
+            return
+    
     g.waiting_for_ostedh_decision = False
     dec = (d.get('decision') or '').strip().lower()
+
+    broadcast(g.code, 'guess_result', {
+        'guesser': gd['name'],
+        'guess': gd['guess'],
+        'decision': dec,
+        'round': g.current_tour
+    })
+    
     if dec == "yes":
         diff = abs(g.current_tour - (g.expected_tour or g.current_tour))
         pts = {0: (300, 400), 1: (220, 280), 2: (160, 200)}
+        
         if diff in pts:
             gp, op = pts[diff]
         else:
@@ -775,22 +892,39 @@ def on_dec(d):
             else:
                 gp = max(20, 80 - diff * 6)
                 op = max(15, 60 - diff * 5)
+        
         guesser = g.players.get(guesser_key)
         if guesser:
             guesser.add_point(gp)
+        
         ost = g.get_ostedh()
         if ost:
             ost.add_point(op)
-        broadcast(g.code, 'game_won', {'winner': gd['name'], 'points': gp, 'tour': g.current_tour, 'guess': gd['guess']})
+        
+        broadcast(g.code, 'game_won', {
+            'winner': gd['name'],
+            'points': gp,
+            'tour': g.current_tour,
+            'guess': gd['guess']
+        })
+        
         g.right_answer = True
         broadcast_scoreboard(g)
+        
         sb, winner = get_scoreboard(g)
-        payload = {'scoreboard': sb, 'winner': winner, 'code': g.code, 'ostedh_image_url': g.ostedh_image_url if g.right_answer else None}
+        payload = {
+            'scoreboard': sb,
+            'winner': winner,
+            'code': g.code,
+            'ostedh_image_url': g.ostedh_image_url if g.right_answer else None
+        }
+        
         for p in g.players.values():
             try:
                 socketio.emit('game_over', payload, room=p.sid)
             except Exception:
                 pass
+        
         print(f"[GAME_OVER] Group {g.code} will be cleaned up in 60 seconds")
     else:
         guesser = g.players.get(guesser_key)
@@ -799,17 +933,19 @@ def on_dec(d):
         broadcast_scoreboard(g)
         g.next_turn()
         notify_turn(g)
-    if guesser_key in g.pending_guesses:
-        del g.pending_guesses[guesser_key]
+        
+        if guesser_key in g.pending_guesses:
+            del g.pending_guesses[guesser_key]
 
-# ✅ FIXED: Send description and theme
 @socketio.on('osteth_view_picture')
 def on_osteth_view_picture(d):
     code = d.get('code')
     g = GROUPS.get(code)
+    
     if not g:
         emit('osteth_picture_error', {'error': 'Group not found'}, room=request.sid)
         return
+    
     ost = g.get_ostedh()
     if not ost or ost.sid != request.sid:
         emit('osteth_picture_error', {'error': 'Only Osteth can view picture'}, room=request.sid)
@@ -826,9 +962,51 @@ def on_osteth_view_picture(d):
     else:
         emit('osteth_picture_error', {'error': 'Picture not set yet'}, room=request.sid)
 
+@socketio.on('quit_game')
+def on_quit_game(d):
+    code = d.get('code')
+    if not code:
+        return
+    
+    g = GROUPS.get(code)
+    if not g:
+        return
+    
+    player = None
+    player_key = None
+    for k, p in g.players.items():
+        if p.sid == request.sid:
+            player = p
+            player_key = k
+            break
+    
+    if not player:
+        return
+    
+    print(f"[QUIT] {player.name} quit game {g.code}")
+
+    if player_key in g.players:
+        del g.players[player_key]
+    
+    if player_key in g.player_order:
+        g.player_order.remove(player_key)
+    
+    if player_key in g.pending_guesses:
+        del g.pending_guesses[player_key]
+   
+    broadcast(g.code, 'player_left', {'name': player.name, 'id': player.player_id}, exclude_sid=request.sid)
+    
+
+    cnt = len([p for p in g.players.values() if p.role != "admin" and not p.disconnected])
+    if g.game_started and cnt < 1:
+        _end_game_and_cleanup(g, reason="not_enough_players")
+    
+    leave_room(request.sid)
+
 @socketio.on('disconnect')
 def on_disconnect():
     sid = request.sid
+    
     for g in list(GROUPS.values()):
         player = None
         player_key = None
@@ -837,10 +1015,13 @@ def on_disconnect():
                 player = p
                 player_key = k
                 break
+        
         if not player:
             continue
+        
         print(f"[DISCONNECT] {player.name} ({sid}) disconnected from {g.code}")
         player.disconnected = True
+        
         broadcast(g.code, 'player_left', {'name': player.name, 'id': player.player_id}, exclude_sid=sid)
         
         ost = g.get_ostedh()
@@ -850,19 +1031,22 @@ def on_disconnect():
         else:
             if player_key in g.pending_guesses:
                 del g.pending_guesses[player_key]
-                if g.waiting_for_ostedh_decision:
-                    g.waiting_for_ostedh_decision = False
-                    g.next_turn()
-                    notify_turn(g)
+            if g.waiting_for_ostedh_decision:
+                g.waiting_for_ostedh_decision = False
+                g.next_turn()
+                notify_turn(g)
+            
             cur = g.get_current()
             if cur and cur.sid == sid and g.waiting_for_ostedh_answer:
                 _schedule_player_timeout(g, player_key, seconds=5)
             else:
                 _schedule_player_timeout(g, player_key, seconds=5)
+        
         cnt = len([p for p in g.players.values() if p.role != "admin" and not p.disconnected])
         if g.game_started and cnt < 1:
             _end_game_and_cleanup(g, reason="not_enough_players")
-        break
+            break
+    
     leave_room(sid)
 
 @app.route('/')
@@ -878,10 +1062,13 @@ def get_sb(code):
     g = GROUPS.get(code)
     if not g:
         return jsonify({'error': 'Not found'}), 404
+    
     sb, winner = get_scoreboard(g)
     resp = {'scoreboard': sb, 'winner': winner}
+    
     if g.right_answer and g.ostedh_image_url:
         resp['ostedh_image_url'] = g.ostedh_image_url
+    
     return jsonify(resp)
 
 if __name__ == '__main__':
