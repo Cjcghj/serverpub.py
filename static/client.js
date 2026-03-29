@@ -13,7 +13,7 @@ let selectedTheme = null;
 let gameLaunched = false;
 
 const CK = 'ostedh_player';
-const COOKIE_EXP_HOURS = 2;
+const COOKIE_EXP_HOURS = 8760; 
 
 const log = (...args) => console.log('[GAME]', ...args);
 
