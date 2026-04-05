@@ -1,4 +1,3 @@
-# app.py
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import random, uuid, os, threading, time
@@ -650,7 +649,24 @@ def on_launch(d):
     
     g.game_launched = True  
     start_game(g)
+@socketio.on('turn_expired_token')
+def on_turn_expired_token(d):
+    code = d.get('code')
+    player_id = d.get('player_id')
+    g = GROUPS.get(code)
+    if not g or not g.game_started or g.right_answer:
+        return
+    if g.waiting_for_ostedh_answer or g.waiting_for_ostedh_decision:
+        return  
     
+    cur = g.get_current()
+    if not cur or cur.player_id != player_id:
+        return  
+    print(f"[TIMEOUT] {cur.name} timed out. Jumping to next turn.")
+
+    g.next_turn()
+    broadcast(g.code, 'system', {'message': f'⏰ {cur.name} timed out. Turn passed.'})
+    notify_turn(g)
 
     for p in g.players.values():
         try:
