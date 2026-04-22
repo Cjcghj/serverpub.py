@@ -10,13 +10,12 @@ let ostethExpectedRound = null;
 let selectedTheme = null;
 let gameLaunched = false;
 
-// ⏱️ TURN TIMER
 let turnTimer = null;
 let turnTimeLeft = 30;
 const TURN_TIMEOUT_SEC = 30;
 
 const CK = 'ostedh_player';
-const COOKIE_EXP_HOURS = 104000;
+const COOKIE_EXP_HOURS = 2;
 const log = (...args) => console.log('[GAME]', ...args);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -99,6 +98,24 @@ function handleTurnTimeout() {
     document.getElementById('turn-ind').textContent = 'Waiting...';
     document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
 }
+
+socket.on('answer_request', d => {
+    console.log('[OSTETH] Answer request received:', d);
+    document.getElementById('ans-asker').textContent = d.asker;
+    document.getElementById('ans-q').textContent = d.question;
+    document.getElementById('ost-ans-modal').style.display = 'flex';
+});
+
+// Add button handlers for Yes/No:
+document.getElementById('ans-y').onclick = () => {
+    socket.emit('ostedh_answer', { code: gCode, answer: 'yes' });
+    document.getElementById('ost-ans-modal').style.display = 'none';
+};
+
+document.getElementById('ans-n').onclick = () => {
+    socket.emit('ostedh_answer', { code: gCode, answer: 'no' });
+    document.getElementById('ost-ans-modal').style.display = 'none';
+};
 
 // 🔍 TEST: window.testTurnTimer()
 window.testTurnTimer = () => { console.log('[TIMER] 🧪 Test'); myTurn = true; document.getElementById('ctrls').style.display = 'block'; document.getElementById('turn-ind').textContent = "✅ YOUR turn!"; startTurnTimer(); };
