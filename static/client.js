@@ -15,7 +15,7 @@ let turnTimeLeft = 30;
 const TURN_TIMEOUT_SEC = 30;
 
 const CK = 'ostedh_player';
-const COOKIE_EXP_HOURS = 2;
+const COOKIE_EXP_HOURS = 3600;
 const log = (...args) => console.log('[GAME]', ...args);
 
 document.addEventListener('DOMContentLoaded', () => {
