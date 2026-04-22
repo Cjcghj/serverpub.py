@@ -15,7 +15,7 @@ let turnTimeLeft = 30;
 const TURN_TIMEOUT_SEC = 30;
 
 const CK = 'ostedh_player';
-const COOKIE_EXP_HOURS = 3600000;
+const COOKIE_EXP_HOURS = 360000;
 const log = (...args) => console.log('[GAME]', ...args);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -34,6 +34,23 @@ document.addEventListener('DOMContentLoaded', () => {
             Object.assign(timer.style, { textAlign: 'center', fontSize: '22px', fontWeight: 'bold', color: '#2ecc71', padding: '6px', borderRadius: '8px', background: 'rgba(46,204,113,0.15)', border: '2px solid rgba(46,204,113,0.3)', margin: '5px 0', fontFamily: 'monospace', display: 'none', transition: 'all 0.3s ease' });
             gameScreen.insertBefore(timer, gameScreen.firstChild);
         }
+    }
+
+    // ✅ FIXED: Attach answer button handlers inside DOMContentLoaded (DOM guaranteed ready)
+    const ansY = document.getElementById('ans-y');
+    const ansN = document.getElementById('ans-n');
+    
+    if (ansY) {
+        ansY.onclick = () => {
+            socket.emit('ostedh_answer', { code: gCode, answer: 'yes' });
+            document.getElementById('ost-ans-modal').style.display = 'none';
+        };
+    }
+    if (ansN) {
+        ansN.onclick = () => {
+            socket.emit('ostedh_answer', { code: gCode, answer: 'no' });
+            document.getElementById('ost-ans-modal').style.display = 'none';
+        };
     }
 });
 
@@ -99,23 +116,18 @@ function handleTurnTimeout() {
     document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
 }
 
+// ✅ FIXED: Socket handler for Osteth answer request
 socket.on('answer_request', d => {
     console.log('[OSTETH] Answer request received:', d);
-    document.getElementById('ans-asker').textContent = d.asker;
-    document.getElementById('ans-q').textContent = d.question;
-    document.getElementById('ost-ans-modal').style.display = 'flex';
+    const askerEl = document.getElementById('ans-asker');
+    const qEl = document.getElementById('ans-q');
+    const modal = document.getElementById('ost-ans-modal');
+    
+    if (askerEl) askerEl.textContent = d.asker;
+    if (qEl) qEl.textContent = d.question;
+    if (modal) modal.style.display = 'flex';
+    else console.error('[ERROR] ost-ans-modal not found!');
 });
-
-// Add button handlers for Yes/No:
-document.getElementById('ans-y').onclick = () => {
-    socket.emit('ostedh_answer', { code: gCode, answer: 'yes' });
-    document.getElementById('ost-ans-modal').style.display = 'none';
-};
-
-document.getElementById('ans-n').onclick = () => {
-    socket.emit('ostedh_answer', { code: gCode, answer: 'no' });
-    document.getElementById('ost-ans-modal').style.display = 'none';
-};
 
 // 🔍 TEST: window.testTurnTimer()
 window.testTurnTimer = () => { console.log('[TIMER] 🧪 Test'); myTurn = true; document.getElementById('ctrls').style.display = 'block'; document.getElementById('turn-ind').textContent = "✅ YOUR turn!"; startTurnTimer(); };
